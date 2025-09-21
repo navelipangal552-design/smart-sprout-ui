@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Droplets, 
   MapPin, 
@@ -12,7 +14,9 @@ import {
   Play, 
   Square,
   Thermometer,
-  Gauge
+  Gauge,
+  Container,
+  AlertTriangle
 } from "lucide-react";
 import sandySoilImg from "@/assets/sandy-soil.jpg";
 import claySoilImg from "@/assets/clay-soil.jpg";
@@ -20,6 +24,7 @@ import loamySoilImg from "@/assets/loamy-soil.jpg";
 
 const Index = () => {
   const [selectedRegion, setSelectedRegion] = useState("");
+  const [customRegion, setCustomRegion] = useState("");
   const [selectedSoil, setSelectedSoil] = useState("");
   const [pumpRunning, setPumpRunning] = useState(false);
   const [wateringTime, setWateringTime] = useState(0);
@@ -27,13 +32,41 @@ const Index = () => {
   const [temperature] = useState(32);
   const [humidity] = useState(65);
   const [rainExpected] = useState(false);
+  const [tankLevel] = useState(75); // Tank water level percentage
+  const [lastTankAlert, setLastTankAlert] = useState<string | null>(null);
+  
+  const { toast } = useToast();
 
-  const regions = ["Nagpur", "Amravati", "Yavatmal"];
+  const defaultRegions = ["Nagpur", "Amravati", "Yavatmal"];
   const soilTypes = [
     { name: "Sandy", img: sandySoilImg, time: 15 },
     { name: "Clay", img: claySoilImg, time: 7 },
     { name: "Loamy", img: loamySoilImg, time: 10 }
   ];
+
+  // Tank monitoring alerts
+  useEffect(() => {
+    const currentAlert = tankLevel <= 20 ? 'empty' : tankLevel >= 95 ? 'full' : null;
+    
+    if (currentAlert && currentAlert !== lastTankAlert) {
+      setLastTankAlert(currentAlert);
+      
+      if (currentAlert === 'empty') {
+        toast({
+          title: "⚠️ Tank Empty",
+          description: "Water tank level is critically low. Please refill the tank.",
+          variant: "destructive",
+        });
+      } else if (currentAlert === 'full') {
+        toast({
+          title: "✅ Tank Full", 
+          description: "Water tank is full and ready for irrigation.",
+        });
+      }
+    } else if (!currentAlert) {
+      setLastTankAlert(null);
+    }
+  }, [tankLevel, lastTankAlert, toast]);
 
   const calculateWateringTime = () => {
     const soil = soilTypes.find(s => s.name === selectedSoil);
@@ -86,8 +119,8 @@ const Index = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-3">
-              {regions.map((region) => (
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {defaultRegions.map((region) => (
                 <Button
                   key={region}
                   variant={selectedRegion === region ? "default" : "outline"}
@@ -97,6 +130,29 @@ const Index = () => {
                   {region}
                 </Button>
               ))}
+            </div>
+            
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Or enter custom region:</p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Enter region name"
+                  value={customRegion}
+                  onChange={(e) => setCustomRegion(e.target.value)}
+                  className="flex-1"
+                />
+                <Button 
+                  onClick={() => {
+                    if (customRegion.trim()) {
+                      setSelectedRegion(customRegion.trim());
+                      setCustomRegion("");
+                    }
+                  }}
+                  disabled={!customRegion.trim()}
+                >
+                  Add
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -131,9 +187,39 @@ const Index = () => {
           </Card>
         )}
 
-        {/* Weather & Status */}
+        {/* Tank Status & Weather & Soil Status */}
         {selectedRegion && selectedSoil && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Tank Status */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Container className="h-5 w-5" />
+                  Tank Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span>Water Level</span>
+                    <Badge variant={tankLevel <= 20 ? "destructive" : tankLevel >= 95 ? "default" : "secondary"}>
+                      {tankLevel <= 20 ? "Tank Empty ⚠️" : tankLevel >= 95 ? "Tank Full ✅" : "Normal"}
+                    </Badge>
+                  </div>
+                  <Progress value={tankLevel} className="h-3" />
+                  <div className="text-center">
+                    <span className="text-2xl font-bold">{tankLevel}%</span>
+                  </div>
+                  {tankLevel <= 20 && (
+                    <div className="flex items-center gap-1 text-destructive text-sm">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span>Please refill tank</span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Weather */}
             <Card>
               <CardHeader>
@@ -192,7 +278,7 @@ const Index = () => {
         )}
 
         {/* Pump Control */}
-        {selectedRegion && selectedSoil && (
+        {selectedRegion && selectedSoil && tankLevel > 20 && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -248,6 +334,24 @@ const Index = () => {
                     Watering disabled - rain expected and soil moisture is adequate
                   </p>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Tank Empty Warning */}
+        {selectedRegion && selectedSoil && tankLevel <= 20 && (
+          <Card className="border-destructive">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+                Tank Empty - Cannot Water
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center space-y-2">
+                <p className="text-destructive">Water tank level is too low ({tankLevel}%)</p>
+                <p className="text-sm text-muted-foreground">Please refill the tank before starting irrigation</p>
               </div>
             </CardContent>
           </Card>
