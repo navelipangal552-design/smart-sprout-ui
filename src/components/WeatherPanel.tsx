@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Cloud, CloudRain, Sun, Thermometer, Droplets } from "lucide-react";
+import { Cloud, CloudRain, Sun, Thermometer, Droplets, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface WeatherData {
@@ -9,6 +9,8 @@ interface WeatherData {
   condition: string;
   rainForecast: boolean;
   description: string;
+  city: string;
+  region: string;
 }
 
 interface WeatherPanelProps {
@@ -18,24 +20,51 @@ interface WeatherPanelProps {
 export const WeatherPanel = ({ region }: WeatherPanelProps) => {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock weather data fetch - in real app, this would call OpenWeatherMap API
+  // Real weather data fetch from backend API
+  const fetchWeatherData = async (regionName: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch(`http://localhost:5000/api/weather/${regionName.toLowerCase()}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const weatherData = await response.json();
+      setWeather(weatherData);
+    } catch (error) {
+      console.error('Error fetching weather:', error);
+      setError('Failed to fetch weather data');
+      // Fallback to mock data if API fails
+      setWeather(getMockWeatherData(regionName));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Mock data fallback (for development or API failure)
+  const getMockWeatherData = (regionName: string): WeatherData => {
+    const conditions = ['sunny', 'cloudy', 'rainy'];
+    const randomCondition = conditions[Math.floor(Math.random() * conditions.length)];
+    
+    return {
+      temperature: Math.floor(Math.random() * 15) + 25,
+      humidity: Math.floor(Math.random() * 30) + 50,
+      condition: randomCondition,
+      rainForecast: randomCondition === 'rainy',
+      description: randomCondition === 'rainy' ? 'Light rain expected' : 'Clear skies',
+      city: regionName.charAt(0).toUpperCase() + regionName.slice(1),
+      region: regionName
+    };
+  };
+
   useEffect(() => {
     if (!region) return;
-    
-    setLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      const mockWeather: WeatherData = {
-        temperature: Math.floor(Math.random() * 15) + 25, // 25-40°C
-        humidity: Math.floor(Math.random() * 30) + 50, // 50-80%
-        condition: Math.random() > 0.5 ? "sunny" : "rainy",
-        rainForecast: Math.random() > 0.6,
-        description: Math.random() > 0.5 ? "Clear skies expected" : "Light rain possible"
-      };
-      setWeather(mockWeather);
-      setLoading(false);
-    }, 1000);
+    fetchWeatherData(region);
   }, [region]);
 
   const getWeatherIcon = (condition: string) => {
@@ -59,6 +88,12 @@ export const WeatherPanel = ({ region }: WeatherPanelProps) => {
     return <Badge variant="secondary" className="bg-gray-100 text-gray-800">☁️ Cloudy</Badge>;
   };
 
+  const handleRefresh = () => {
+    if (region) {
+      fetchWeatherData(region);
+    }
+  };
+
   if (!region) {
     return (
       <Card className="w-full">
@@ -76,16 +111,32 @@ export const WeatherPanel = ({ region }: WeatherPanelProps) => {
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Cloud className="h-5 w-5 text-primary" />
-          Weather in {region.charAt(0).toUpperCase() + region.slice(1)}
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Cloud className="h-5 w-5 text-primary" />
+            Weather in {region.charAt(0).toUpperCase() + region.slice(1)}
+          </CardTitle>
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className="p-2 rounded-md hover:bg-gray-100 transition-colors"
+            title="Refresh weather data"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
         <CardDescription>Live weather data for optimal irrigation planning</CardDescription>
       </CardHeader>
       <CardContent>
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        ) : error ? (
+          <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+            <p className="text-sm text-yellow-800">
+              ⚠️ {error}. Showing sample data.
+            </p>
           </div>
         ) : weather ? (
           <div className="space-y-4">
@@ -95,7 +146,7 @@ export const WeatherPanel = ({ region }: WeatherPanelProps) => {
                 {getWeatherIcon(weather.condition)}
                 <div>
                   <p className="text-2xl font-bold">{weather.temperature}°C</p>
-                  <p className="text-sm text-muted-foreground">{weather.description}</p>
+                  <p className="text-sm text-muted-foreground capitalize">{weather.description}</p>
                 </div>
               </div>
               {getConditionBadge(weather.condition, weather.rainForecast)}
@@ -127,6 +178,11 @@ export const WeatherPanel = ({ region }: WeatherPanelProps) => {
                 </p>
               </div>
             )}
+
+            {/* Data Source Info */}
+            <div className="text-xs text-muted-foreground text-center pt-2 border-t">
+              {error ? "Sample data" : "Live data from OpenWeatherMap"}
+            </div>
           </div>
         ) : null}
       </CardContent>

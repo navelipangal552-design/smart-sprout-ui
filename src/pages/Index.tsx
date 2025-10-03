@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,9 +24,11 @@ const Index = () => {
   const [pumpRunning, setPumpRunning] = useState(false);
   const [wateringTime, setWateringTime] = useState(0);
   const [moistureLevel] = useState(45);
-  const [temperature] = useState(32);
-  const [humidity] = useState(65);
-  const [rainExpected] = useState(false);
+
+  // Weather states
+  const [temperature, setTemperature] = useState<number | null>(null);
+  const [humidity, setHumidity] = useState<number | null>(null);
+  const [rainExpected, setRainExpected] = useState(false);
 
   const regions = ["Nagpur", "Amravati", "Yavatmal"];
   const soilTypes = [
@@ -35,14 +37,39 @@ const Index = () => {
     { name: "Loamy", img: loamySoilImg, time: 10 }
   ];
 
+  // Fetch weather from backend API
+  const fetchWeather = async (regionName: string) => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/weather/${regionName.toLowerCase()}`);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+
+      setTemperature(data.temperature);
+      setHumidity(data.humidity);
+      setRainExpected(data.rainForecast);
+    } catch (err) {
+      console.error("Error fetching weather:", err);
+      // fallback mock values
+      setTemperature(30);
+      setHumidity(60);
+      setRainExpected(false);
+    }
+  };
+
+  // Fetch weather whenever region changes
+  useEffect(() => {
+    if (selectedRegion) fetchWeather(selectedRegion);
+  }, [selectedRegion]);
+
   const calculateWateringTime = () => {
     const soil = soilTypes.find(s => s.name === selectedSoil);
     if (!soil) return 0;
-    
+
     let time = soil.time;
+
     if (rainExpected) time = Math.round(time * 0.3);
-    if (temperature > 35) time = Math.round(time * 1.3);
-    
+    if (temperature && temperature > 35) time = Math.round(time * 1.3);
+
     return time;
   };
 
@@ -50,7 +77,7 @@ const Index = () => {
     const time = calculateWateringTime();
     setWateringTime(time);
     setPumpRunning(true);
-    
+
     setTimeout(() => {
       setPumpRunning(false);
       setWateringTime(0);
@@ -87,7 +114,7 @@ const Index = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-3 gap-3">
-              {regions.map((region) => (
+              {regions.map(region => (
                 <Button
                   key={region}
                   variant={selectedRegion === region ? "default" : "outline"}
@@ -109,7 +136,7 @@ const Index = () => {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-4">
-                {soilTypes.map((soil) => (
+                {soilTypes.map(soil => (
                   <div
                     key={soil.name}
                     className={`cursor-pointer rounded-lg border p-4 text-center transition-all hover:shadow-md ${
